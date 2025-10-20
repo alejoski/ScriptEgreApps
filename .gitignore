@@ -1,0 +1,19 @@
+# Ignorar archivos de configuración
+.env
+.env.*
+# Ignorar archivos de log
+*.log   
+# Ignorar archivos temporales
+*.tmp
+# Ignorar archivos de base de datos local
+*.sqlite3
+# Ignorar archivos de caché
+__pycache__/    
+*.pyc
+# Ignorar archivos de entorno virtual
+venv/   
+modules/
+# Ignorar archivos específicos del sistema operativo
+.DS_Store
+Thumbs.db
+# Ignorar archivos de configuración del editor
