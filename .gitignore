@@ -17,3 +17,6 @@ modules/
 .DS_Store
 Thumbs.db
 # Ignorar archivos de configuración del editor
+
+#Json settings
+__azurite*.json

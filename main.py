@@ -19,12 +19,13 @@ logging.basicConfig(filename='script.log', level=logging.INFO,
 
 # Incialización de variables globales para las conexiones  
 def init_conections():
-    global oracle_egre, oracle_vb, ad
+    global oracle_egre, oracle_vb, ad, dominio
 
     # Conexión a Oracle - Egre Apps
     oracle_user = os.getenv('ORACLE_USER_EGRE')
     oracle_password = os.getenv('ORACLE_PASSWORD_EGRE')
     oracle_dsn = os.getenv('ORACLE_DSN_EGRE')
+    dominio = os.getenv('DOMINIO')
     oracle_egre = OracleConnector(oracle_user, oracle_password, oracle_dsn, "EGRESADOS")
     oracle_egre.connect()
 
@@ -75,9 +76,12 @@ def normalizar_datos_egre(egresado):
 
 
 def main():
-    global oracle_egre, oracle_vb, ad
+    global oracle_egre, oracle_vb, ad, dominio
+    
 
     init_conections()
+
+
 
     print("[1] ----------- Consultando Egresados a Procesar")
     
@@ -98,6 +102,11 @@ def main():
     print("[2] ----------- Consultando Datos en Vista Banner")  
  
     for egresado in egresados_procesar:
+        print("------------------------------------------------------------------------------------------------------")
+        print("------------------------------------------------------------------------------------------------------")
+        print("------------------------------------------------------------------------------------------------------")
+        print("------------------------------------------------------------------------------------------------------")
+    
         print(f'EGRESADO -> {egresado}')
         egresado_vista_banner = oracle_vb.get_egresado_vista_banner(egresado.documento)
         
@@ -108,120 +117,169 @@ def main():
         print("[3] ----------- Existe en Vista Banner?")  
         if(egresado_vista_banner):
             vb_egre = normalizar_datos_egre(egresado_vista_banner[0])
-            vb_egre
-            print("EXISTE EN VISTA BANNER", vb_egre)
-
-
-            print("[5] ----------- Busca egresado por documento en AD ")  
-            egresado_ad =  ad.search_user(vb_egre.documento, "employeeID")
-
             
-            print("[6] ----------- Existe en AD? ")
-            if(egresado_ad):
-                print("[7] ----------- YA EXISTE EN AD ")
-                oracle_egre.update_usuario_procesar(egresado.id, ESTADO='EXISTE_DOCUMENTO_EN_AD')
+            print("=============== EXISTE EN VISTA BANNER: =============== ")
+            print(vb_egre)
 
-                print("YA EXISTE EN AD ") 
-                print("EGRESADO AD ", egresado_ad)
-
-            elif(not egresado_ad):
-
-                print("[8] ----------- NO EXISTE EN AD ")
-
-                print("...............Generando login............")
-
-                print("primer_nombre ", vb_egre.get_primer_nombre())
-                print("segundo_nombre ", vb_egre.get_segundo_nombre())
-                print("apellidos ", vb_egre.get_apellidos())
-
-
-                gen = LoginOptionsGenerator(
-                        vb_egre.get_primer_nombre(),
-                        vb_egre.get_segundo_nombre(),
-                        vb_egre.get_apellidos()                        
-                    )
-                print("[8.1] ----------- Generando opciones sugeridas de login ")
-                opciones = gen.generar_opciones()
-
-                login_seleccionado = None
-                for login in opciones:
-                    print("Opciones login ", opciones)
-                    print(f"[8.2] ----------- Ya existe login {login} en AD?  ")
-                    temp_valida_Login = ad.search_user(login, "sAMAccountName")
-                    
-
-                    if(temp_valida_Login):
-                        print("[8.3] ----------- Ya existe login en AD, generar uno nuevo (", login, ")")
-                                         
-
-                    elif(not temp_valida_Login):
-                        print("[8.4] ----------- No existe este login en AD, proceder a crear (", login, ")")
-                        login_seleccionado = login
-                        break
-
-                    print("...............Siguiente............")  
-                    
-                print("...............PROCEDE A CREAR............")
-
-                
-                password = 'claveSegura2024!'
-                pwd_utf16 = f'"{password}"'.encode('utf-16-le')
-
-
-                
-                attributes_da = {
-                    'sAMAccountName': login_seleccionado, #login sin @
-                    'userPrincipalName': login_seleccionado + '@fundacionuniandes.edu.co', #login con @fundacionuniandes.edu.co
-                    'displayName': vb_egre.displayName, #Nombre completo
-                    'givenName': vb_egre.givenName, #Nombres
-                    'sn': vb_egre.sn, #Apellidos
-                    'mail': login_seleccionado + '@fundacionuniandes.edu.co', #login con @fundacionuniandes.edu.co
-                    'employeeID': vb_egre.documento,#documento
-                    'employeeNumber': vb_egre.carnet,#codigo uniandes
-                    'otherMailbox': vb_egre.email_personal, #personal email
-                    'businessCategory': 'UAEgresado', #Tipo de usuario
-                    'extensionAttribute12': 'EGRE', #Grado
-                    
-                    # --- Estos son los parametros para forzar el cambio de clave al primer inicio ---
-                    
-                    #'userAccountControl': '512',  #Habilitar cuenta
-                    #'pwdLastSet': '0',  #El usuario debe cambiar la clave al primer inicio
-                    #'unicodePwd': pwd_utf16 #Clave inicial en formato correcto
-                }
-
+            #############################################################
+            ## Proceso de creación de usuario en AD 
+            #############################################################
+            CREACION_DA = proceso_directorio_activo(vb_egre, egresado)
+            
+            if(CREACION_DA):
+                proceso_banner()
                 
 
-                    #'userAccountControl': '512',  #Habilitar cuenta
-                    #'pwdLastSet': '0',  #El usuario debe cambiar la clave al primer inicio
-                    #'unicodePwd': 'hola' #Clave inicial en formato correcto
-
-
-                print("#####################################")
-                #print(json.dumps(attributes_da, indent=4, ensure_ascii=False))  
-                print(attributes_da)
-                print("#####################################")
-                
-                print("...............Creando usuario en AD............")
-                if ad.create_user(attributes_da):
-                    print("...............Usuario creado en AD............")
-                    oracle_egre.update_usuario_procesar(egresado.id, ESTADO='PROCESADO', LOGIN=login_seleccionado, DA="OK" )
-                else:
-                    print("Error creando usuario en AD o ya existe....")
-                    
-                    
-                print("...............Fin  usuario en AD............")
-                
 
         else:
             print("[4] ----------- NO EXISTE EN VISTA BANNER")
             print("NO EXISTE ")
             oracle_egre.update_usuario_procesar(egresado.id, ESTADO='NO_EXSITE_EN_VISTA')
 
+ 
+ 
+ 
+ 
+ 
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#
+#       Funcion de creacion de usuarios en el Directorio Activo
+# 
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+def proceso_directorio_activo(vb_egre, egresado):
+    global oracle_egre, ad, dominio
+    
+    print("[5] ----------- Busca egresado por documento en AD ")  
+    egresado_ad = ad.search_user(vb_egre.documento, "employeeID")
+
+
+    print("[6] ----------- Existe en AD? ", vb_egre.documento)
+    if(egresado_ad):
+        print("[7] ================ YA EXISTE EN AD =============== ")
+        print(egresado_ad)  
+        login_en_ad = str(egresado_ad.cn)
+        print("LOGIN EN AD ", login_en_ad)
+        oracle_egre.update_usuario_procesar(egresado.id, ESTADO='EXISTE_DOCUMENTO_EN_AD', LOGIN=login_en_ad)
+
+        print("YA EXISTE EN AD ") 
+        print("EGRESADO AD ", egresado_ad)
+
+    elif(not egresado_ad):
+
+        print("[8] ----------- NO EXISTE EN AD ")
+
+        print("...............Generando login............")
+
+        print("primer_nombre ", vb_egre.get_primer_nombre())
+        print("segundo_nombre ", vb_egre.get_segundo_nombre())
+        print("apellidos ", vb_egre.get_apellidos())
+
+
+        gen = LoginOptionsGenerator(
+                vb_egre.get_primer_nombre(),
+                vb_egre.get_segundo_nombre(),
+                vb_egre.get_apellidos()                        
+            )
+        print("[8.1] ----------- Generando opciones sugeridas de login ")
+        opciones = gen.generar_opciones()
+
+        login_seleccionado = None
+        for login in opciones:
+            print("Opciones login ", opciones)
+            print(f"[8.2] ----------- Ya existe login {login} en AD?  ")
+            temp_valida_Login = ad.search_user(login, "sAMAccountName")
             
 
+            if(temp_valida_Login):
+                print("[8.3] ----------- Ya existe login en AD, generar uno nuevo (", login, ")")
+                                    
+
+            elif(not temp_valida_Login):
+                print("[8.4] ----------- No existe este login en AD, proceder a crear (", login, ")")
+                login_seleccionado = login
+                break
+
+            print("...............Siguiente............")  
+            
+        print("...............PROCEDE A CREAR............")
+
+        
+        #Preparando clave inicial
+        password = 'claveSegura2024!'
+        pwd_utf16 = f'"{password}"'.encode('utf-16-le')
+
+        
+        attributes_da = {
+            'sAMAccountName': login_seleccionado, #login sin @
+            'userPrincipalName': login_seleccionado + '@'+dominio, #login con @dominio
+            'displayName': vb_egre.displayName, #Nombre completo
+            'givenName': vb_egre.givenName, #Nombres
+            'sn': vb_egre.sn, #Apellidos
+            'mail': login_seleccionado + '@'+dominio, #login con @dominio
+            'employeeID': vb_egre.documento,#documento
+            'employeeNumber': vb_egre.carnet,#codigo uniandes
+            'otherMailbox': vb_egre.email_personal, #personal email
+            'businessCategory': 'UAEgresado', #Tipo de usuario
+            'extensionAttribute12': 'EGRE', #Grado                    
+            # --- Estos son los parametros para forzar el cambio de clave al primer inicio ---                    
+            'userAccountControl': '512',  #Habilitar cuenta
+            'pwdLastSet': '0',  #El usuario debe cambiar la clave al primer inicio
+            'unicodePwd': pwd_utf16 #Clave inicial en formato correcto
+        }
+
+        
+
+            #'userAccountControl': '512',  #Habilitar cuenta
+            #'pwdLastSet': '0',  #El usuario debe cambiar la clave al primer inicio
+            #'unicodePwd': 'hola' #Clave inicial en formato correcto
 
 
+        print("#####################################")
+        #print(json.dumps(attributes_da, indent=4, ensure_ascii=False))  
+        print(attributes_da)
+        print("#####################################")
+        
+        print("...............Creando usuario en AD............")
+        if ad.create_user(attributes_da):
+            print("...............Usuario creado en AD............")
+            oracle_egre.update_usuario_procesar(egresado.id, ESTADO='PROCESADO', LOGIN=login_seleccionado, DA="OK" )
+            print("...............Fin  usuario en AD OK............")
+            return True
+        else:
+            print("Error creando usuario en AD o ya existe....")
+            print("...............Fin  usuario en AD Fallido............")
+            return False
+            
+            
+        
+     
+     
+     
+     
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#
+#       Funcion de creacion de usuarios en Banner
+# 
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #        
 
+def proceso_banner():
+    global oracle_egre,  dominio
+    print("[9] ----------- Proceso Banner ")
+
+
+    oracle_egre.verificar_paquetes_disponibles()
+
+    print("--------------------------------------------")
+    
+    oracle_egre.actualizar_banner(
+        numero_identificacion="52862770",
+        mail="pj.guerra" + '@' + dominio,
+        existe=False,
+        autocommit=True 
+    )
+    
+    
 
 
 
@@ -233,9 +291,9 @@ def main():
 
 
     # Consumo de API REST
-    api = APIClient()
-    api.call_endpoint()
-    logging.info('Fin del script')
+    # api = APIClient()
+    # api.call_endpoint()
+    # logging.info('Fin del script')
 
 
     #Cerrando conexiones
