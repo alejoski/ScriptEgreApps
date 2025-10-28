@@ -8,9 +8,11 @@ from modules.ad import ActiveDirectoryConnector
 from modules.api import APIClient
 import codecs
 import os
+class Container:#Borrrar
+    pass
 
-#load_dotenv('./batch_script/.env') #PRODUCTION
-load_dotenv('./batch_script/.env.dev') #DEVELOPMENT
+load_dotenv('./batch_script/.env') #PRODUCTION
+#load_dotenv('./batch_script/.env.dev') #DEVELOPMENT
 
 # Configuración de logging
 logging.basicConfig(filename='script.log', level=logging.INFO,
@@ -80,6 +82,16 @@ def main():
     
 
     init_conections()
+    
+    egresado = Container()
+    egresado.id = 1
+    
+    print(egresado)
+    print(egresado.id)
+    proceso_banner(egresado)
+    
+    exit(0)
+
 
 
 
@@ -127,14 +139,14 @@ def main():
             CREACION_DA = proceso_directorio_activo(vb_egre, egresado)
             
             if(CREACION_DA):
-                proceso_banner()
+                proceso_banner(egresado)
                 
 
 
         else:
             print("[4] ----------- NO EXISTE EN VISTA BANNER")
             print("NO EXISTE ")
-            oracle_egre.update_usuario_procesar(egresado.id, ESTADO='NO_EXSITE_EN_VISTA')
+            oracle_egre.update_usuario_procesar(egresado.id, ESTADO_VISTA='NO_EXSITE_EN_VISTA')
 
  
  
@@ -160,7 +172,11 @@ def proceso_directorio_activo(vb_egre, egresado):
         print(egresado_ad)  
         login_en_ad = str(egresado_ad.cn)
         print("LOGIN EN AD ", login_en_ad)
-        oracle_egre.update_usuario_procesar(egresado.id, ESTADO='EXISTE_DOCUMENTO_EN_AD', LOGIN=login_en_ad)
+        print("DETALLE ", egresado_ad.distinguishedName)
+        login_en_ad = str(egresado_ad.cn)
+        login_en_ad = str(egresado_ad.cn)
+        detalle = str(egresado_ad.distinguishedName)
+        oracle_egre.update_usuario_procesar(egresado.id, ESTADO_AD='EXISTE_DOCUMENTO_EN_AD', LOGIN=login_en_ad, DETALLE=detalle)
 
         print("YA EXISTE EN AD ") 
         print("EGRESADO AD ", egresado_ad)
@@ -243,7 +259,7 @@ def proceso_directorio_activo(vb_egre, egresado):
         print("...............Creando usuario en AD............")
         if ad.create_user(attributes_da):
             print("...............Usuario creado en AD............")
-            oracle_egre.update_usuario_procesar(egresado.id, ESTADO='PROCESADO', LOGIN=login_seleccionado, DA="OK" )
+            oracle_egre.update_usuario_procesar(egresado.id, ESTADO_AD='CREADO EN AD', LOGIN=login_seleccionado, DA="OK" )
             print("...............Fin  usuario en AD OK............")
             return True
         else:
@@ -263,21 +279,49 @@ def proceso_directorio_activo(vb_egre, egresado):
 # 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #        
 
-def proceso_banner():
+def proceso_banner(egresado):
     global oracle_egre,  dominio
     print("[9] ----------- Proceso Banner ")
 
 
     oracle_egre.verificar_paquetes_disponibles()
 
-    print("--------------------------------------------")
+    print("--------------------------------------------" )
     
-    oracle_egre.actualizar_banner(
+    print("[9.1] ----------- Se intenta crear el usuario como nuevo en Banner " )
+    respuesta = oracle_egre.actualizar_banner(
         numero_identificacion="52862770",
-        mail="pj.guerra" + '@' + dominio,
+        # mail="pj.guerra" + '@' + dominio,
+        mail="pj.guerra" + '@uniandes.edu.co',        
         existe=False,
         autocommit=True 
     )
+    
+    print("Respuesta Banner: ", respuesta)  
+
+    if 'unique constraint' in respuesta or 'ORA-' in respuesta or 'Error' in respuesta:
+        print("[9.2] ----------- el usuario ya existe en Banner, intentando actualizar..." )
+        
+        respuesta = oracle_egre.actualizar_banner(
+            numero_identificacion="52862770",
+            # mail="pj.guerra" + '@' + dominio,
+            mail="pj.guerra" + '@uniandes.edu.co',        
+            existe=True,
+            autocommit=True 
+        )
+        
+        if 'unique constraint' in respuesta or 'ORA-' in respuesta or 'Error' in respuesta:
+            print("[9.3] ----------- Error actualizando usuario en Banner " )
+            oracle_egre.update_usuario_procesar(egresado.id, ESTADO_BANNER='ERROR_EN_BANNER', DETALLE=respuesta[:300] )    
+        else:
+            print("[9.4] ----------- Error actualizando usuario en Banner " )
+            oracle_egre.update_usuario_procesar(egresado.id, ESTADO_BANNER='ACTUAIZADO_EN_BANNER', DETALLE=respuesta[:300] ) 
+        
+        
+    else:
+        print("[9.4] ----------- Usuario creado/actualizado en Banner con exito " )
+        oracle_egre.update_usuario_procesar(egresado.id, ESTADO_BANNER='CREADO_EN_BANNER', BANNER="OK" )
+        
     
     
 
