@@ -6,13 +6,14 @@ from login_options_generator import LoginOptionsGenerator
 from modules.oracle import OracleConnector
 from modules.ad import ActiveDirectoryConnector
 from modules.api import APIClient
+from send_mail import enviar_correo_graph
 import codecs
 import os
 class Container:#Borrrar
     pass
 
-load_dotenv('./batch_script/.env') #PRODUCTION
-#load_dotenv('./batch_script/.env.dev') #DEVELOPMENT
+#load_dotenv('./batch_script/.env') #PRODUCTION
+load_dotenv('./batch_script/.env.dev') #DEVELOPMENT
 
 # Configuración de logging
 logging.basicConfig(filename='script.log', level=logging.INFO,
@@ -59,7 +60,7 @@ def create_user_in_ad(attributes):
 
 def normalizar_datos_egre(egresado):
 
-    egresado.documento = egresado.documento.strip()
+    egresado.pidm = egresado.pidm
     egresado.primer_nombre = egresado.primer_nombre.strip().title() if egresado.primer_nombre is not None else "" 
     egresado.segundo_nombre = egresado.segundo_nombre.strip().title() if egresado.segundo_nombre is not None else ""
     egresado.apellidos = egresado.apellidos.strip().title() if egresado.apellidos is not None else ""
@@ -82,14 +83,15 @@ def main():
     
 
     init_conections()
+
+    # enviar_correo_graph("cuenta@uniandes.edu.co", "napardoz@gmail.com", "Correo prueba", "Correo recibido!")
+    # exit(0)
     
     egresado = Container()
-    egresado.id = 1
-    
+    egresado.id = 1    
     print(egresado)
     print(egresado.id)
-    proceso_banner(egresado)
-    
+    proceso_banner(egresado, 947, 'si.mesa41')    
     exit(0)
 
 
@@ -135,20 +137,38 @@ def main():
 
             #############################################################
             ## Proceso de creación de usuario en AD 
+            ## Retorna {"login": login_definitivo, "estado": True/False, "mensaje": "creado_en_ad"/"error_creando_en_ad"/"exsiste_documento_en_ad"}
             #############################################################
             CREACION_DA = proceso_directorio_activo(vb_egre, egresado)
+           
+            print("RESULTADO CREACION AD ", CREACION_DA)
             
-            if(CREACION_DA):
-                proceso_banner(egresado)
+            
+            #############################################################
+            ## Proceso de creación de usuario BANNER (Goremal, Gobtpac)
+            ## 
+            #############################################################
+            if(CREACION_DA['estado']):
+                print("[9] ----------- Crear usuario en Banner (Goremal")  
+                resultado_banner_goremal =  proceso_banner(egresado, vb_egre.pidm, CREACION_DA.login)
                 
+                
+                if(resultado_banner_goremal):
+                    print("TODO OK EN BANNER Y AD ")
+                    #oracle_egre.update_usuario_procesar(egresado.id, ESTADO_VISTA='PROCESADO_OK' )
+                else:
+                    print("ERROR EN BANNER ")
+                    #oracle_egre.update_usuario_procesar(egresado.id, ESTADO_VISTA='ERROR_EN_BANNER' )
+                    
 
-
+    
         else:
             print("[4] ----------- NO EXISTE EN VISTA BANNER")
             print("NO EXISTE ")
             oracle_egre.update_usuario_procesar(egresado.id, ESTADO_VISTA='NO_EXSITE_EN_VISTA')
 
- 
+    #Cerrando conexiones
+    close_conections()
  
  
  
@@ -156,11 +176,15 @@ def main():
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #
 #       Funcion de creacion de usuarios en el Directorio Activo
-# 
+#
+#     Retorna {"login": login_definitivo, 
+#              "estado": True/False, 
+#              "mensaje": "creado_en_ad"/"error_creando_en_ad"/"exsiste_documento_en_ad"} 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 def proceso_directorio_activo(vb_egre, egresado):
     global oracle_egre, ad, dominio
+    login_definitivo = ""
     
     print("[5] ----------- Busca egresado por documento en AD ")  
     egresado_ad = ad.search_user(vb_egre.documento, "employeeID")
@@ -177,9 +201,11 @@ def proceso_directorio_activo(vb_egre, egresado):
         login_en_ad = str(egresado_ad.cn)
         detalle = str(egresado_ad.distinguishedName)
         oracle_egre.update_usuario_procesar(egresado.id, ESTADO_AD='EXISTE_DOCUMENTO_EN_AD', LOGIN=login_en_ad, DETALLE=detalle)
+        login_definitivo = login_en_ad
 
         print("YA EXISTE EN AD ") 
         print("EGRESADO AD ", egresado_ad)
+        return {"login": login_definitivo, "estado": True, "mensaje": "exsiste_documento_en_ad"}
 
     elif(not egresado_ad):
 
@@ -259,13 +285,15 @@ def proceso_directorio_activo(vb_egre, egresado):
         print("...............Creando usuario en AD............")
         if ad.create_user(attributes_da):
             print("...............Usuario creado en AD............")
-            oracle_egre.update_usuario_procesar(egresado.id, ESTADO_AD='CREADO EN AD', LOGIN=login_seleccionado, DA="OK" )
+            oracle_egre.update_usuario_procesar(egresado.id, ESTADO_AD='CREADO_EN_AD', LOGIN=login_seleccionado, DA="OK" )
+            login_definitivo = login_seleccionado
             print("...............Fin  usuario en AD OK............")
-            return True
+            return {"login": login_definitivo, "estado": True, "mensaje": "creado_en_ad"}         
         else:
             print("Error creando usuario en AD o ya existe....")
             print("...............Fin  usuario en AD Fallido............")
-            return False
+            oracle_egre.update_usuario_procesar(egresado.id, ESTADO_AD='ERROR_CREANDO_AD', DETALLE="Error creando usuario en AD " + login_seleccionado )
+            return {"login": login_definitivo, "estado": False, "mensaje": "error_creando_en_ad"}
             
             
         
@@ -279,51 +307,66 @@ def proceso_directorio_activo(vb_egre, egresado):
 # 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #        
 
-def proceso_banner(egresado):
+def proceso_banner(egresado, pidm_par, login):
     global oracle_egre,  dominio
+    resultado_banner_goremal = False
     print("[9] ----------- Proceso Banner ")
+    print(pidm_par)
+    print(login)
 
 
-    oracle_egre.verificar_paquetes_disponibles()
+    #oracle_egre.verificar_paquetes_disponibles()
 
-    print("--------------------------------------------" )
+    print("-------------------INICIA CREACION GOREMAL-------------------------" )
     
     print("[9.1] ----------- Se intenta crear el usuario como nuevo en Banner " )
-    respuesta = oracle_egre.actualizar_banner(
-        numero_identificacion="52862770",
-        # mail="pj.guerra" + '@' + dominio,
-        mail="pj.guerra" + '@uniandes.edu.co',        
-        existe=False,
-        autocommit=True 
-    )
+    respuesta = ""
+    respuesta = oracle_egre.actualizar_goremal(pidm=pidm_par,mail=login + '@uniandes.edu.co',existe=False,autocommit=True)
     
     print("Respuesta Banner: ", respuesta)  
 
     if 'unique constraint' in respuesta or 'ORA-' in respuesta or 'Error' in respuesta:
         print("[9.2] ----------- el usuario ya existe en Banner, intentando actualizar..." )
         
-        respuesta = oracle_egre.actualizar_banner(
-            numero_identificacion="52862770",
-            # mail="pj.guerra" + '@' + dominio,
-            mail="pj.guerra" + '@uniandes.edu.co',        
-            existe=True,
-            autocommit=True 
-        )
+        respuesta = oracle_egre.actualizar_goremal(pidm=pidm_par,mail=login + '@uniandes.edu.co',existe=True,autocommit=True)
         
         if 'unique constraint' in respuesta or 'ORA-' in respuesta or 'Error' in respuesta:
             print("[9.3] ----------- Error actualizando usuario en Banner " )
             oracle_egre.update_usuario_procesar(egresado.id, ESTADO_BANNER='ERROR_EN_BANNER', DETALLE=respuesta[:300] )    
+            resultado_banner_goremal = False
         else:
-            print("[9.4] ----------- Error actualizando usuario en Banner " )
+            print("[9.4] ----------- actualizado usuario en Banner " )
             oracle_egre.update_usuario_procesar(egresado.id, ESTADO_BANNER='ACTUAIZADO_EN_BANNER', DETALLE=respuesta[:300] ) 
-        
+            resultado_banner_goremal = True
         
     else:
         print("[9.4] ----------- Usuario creado/actualizado en Banner con exito " )
         oracle_egre.update_usuario_procesar(egresado.id, ESTADO_BANNER='CREADO_EN_BANNER', BANNER="OK" )
+        resultado_banner_goremal = True
+        
+        
+    print("-------------------INICIA CREACION GOBTEPAC-------------------------", resultado_banner_goremal )
+    if(resultado_banner_goremal):
+        
+        oracle_egre.actualiza_gobtpac(pidm=pidm_par,mail=login + '@uniandes.edu.co',autocommit=True)
+        
+        
+        
+        
+    return resultado_banner_goremal
         
     
     
+     
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#
+#       Envio de correo de notificacion al egresado
+# 
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #        
+
+def enviar_correo_notificacion(egresado, login, password):
+   pass 
+    
 
 
 
@@ -334,14 +377,11 @@ def proceso_banner(egresado):
 
 
 
-    # Consumo de API REST
-    # api = APIClient()
-    # api.call_endpoint()
-    # logging.info('Fin del script')
+# Consumo de API REST
+# api = APIClient()
+# api.call_endpoint()
+# logging.info('Fin del script')
 
-
-    #Cerrando conexiones
-    close_conections()
 
 
 

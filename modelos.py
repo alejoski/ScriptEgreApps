@@ -7,14 +7,14 @@ class EgresadoProcesar:
     da: str
     banner: str
     crm: str
-    estado: str
+    estado_ad: str
     isEgresado: bool = False
 
 
 
 @dataclass
 class VistaBanner:
-
+    pidm: str
     documento: str   
     primer_nombre: str   
     segundo_nombre: str  
