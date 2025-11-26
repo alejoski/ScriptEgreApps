@@ -69,7 +69,6 @@ def normalizar_datos_egre(egresado):
     egresado.email_personal = egresado.documento.strip()
     egresado.des_grado = egresado.documento.strip()
     egresado.cod_grado = egresado.documento.strip()
-
     egresado.displayName = f"{egresado.primer_nombre} {egresado.segundo_nombre if egresado.segundo_nombre else ''} {egresado.apellidos}"   
     egresado.givenName  = egresado.primer_nombre + " " + egresado.segundo_nombre
     egresado.sn = egresado.apellidos
@@ -91,7 +90,10 @@ def main():
     egresado.id = 1    
     print(egresado)
     print(egresado.id)
-    proceso_banner(egresado, 947, 'si.mesa41')    
+    resultado_banner = proceso_banner(egresado, 954, 'j.ortizd2')    
+    
+    print("FINALIZO PROCESO BANNER" ,  resultado_banner )
+    
     exit(0)
 
 
@@ -150,15 +152,13 @@ def main():
             #############################################################
             if(CREACION_DA['estado']):
                 print("[9] ----------- Crear usuario en Banner (Goremal")  
-                resultado_banner_goremal =  proceso_banner(egresado, vb_egre.pidm, CREACION_DA.login)
+                CREACION_BANNER =  proceso_banner(egresado, vb_egre.pidm, CREACION_DA.login)
                 
                 
-                if(resultado_banner_goremal):
+                if(CREACION_BANNER):
                     print("TODO OK EN BANNER Y AD ")
                     #oracle_egre.update_usuario_procesar(egresado.id, ESTADO_VISTA='PROCESADO_OK' )
-                else:
-                    print("ERROR EN BANNER ")
-                    #oracle_egre.update_usuario_procesar(egresado.id, ESTADO_VISTA='ERROR_EN_BANNER' )
+
                     
 
     
@@ -309,7 +309,8 @@ def proceso_directorio_activo(vb_egre, egresado):
 
 def proceso_banner(egresado, pidm_par, login):
     global oracle_egre,  dominio
-    resultado_banner_goremal = False
+    respuesta_goremal = False
+    respuesta_gobtepac = False
     print("[9] ----------- Proceso Banner ")
     print(pidm_par)
     print(login)
@@ -320,42 +321,55 @@ def proceso_banner(egresado, pidm_par, login):
     print("-------------------INICIA CREACION GOREMAL-------------------------" )
     
     print("[9.1] ----------- Se intenta crear el usuario como nuevo en Banner " )
-    respuesta = ""
-    respuesta = oracle_egre.actualizar_goremal(pidm=pidm_par,mail=login + '@uniandes.edu.co',existe=False,autocommit=True)
+    respuesta_goremal = oracle_egre.actualizar_goremal(pidm=pidm_par,mail=login + '@uniandes.edu.co',existe=False,autocommit=True)
     
-    print("Respuesta Banner: ", respuesta)  
+    print("Respuesta_goremal Banner: ", respuesta_goremal)  
 
-    if 'unique constraint' in respuesta or 'ORA-' in respuesta or 'Error' in respuesta:
+    if respuesta_goremal == False:
         print("[9.2] ----------- el usuario ya existe en Banner, intentando actualizar..." )
         
-        respuesta = oracle_egre.actualizar_goremal(pidm=pidm_par,mail=login + '@uniandes.edu.co',existe=True,autocommit=True)
+        respuesta_goremal = oracle_egre.actualizar_goremal(pidm=pidm_par,mail=login + '@uniandes.edu.co',existe=True,autocommit=True)
         
-        if 'unique constraint' in respuesta or 'ORA-' in respuesta or 'Error' in respuesta:
+        if respuesta_goremal == False:
             print("[9.3] ----------- Error actualizando usuario en Banner " )
-            oracle_egre.update_usuario_procesar(egresado.id, ESTADO_BANNER='ERROR_EN_BANNER', DETALLE=respuesta[:300] )    
-            resultado_banner_goremal = False
+            oracle_egre.update_usuario_procesar(egresado.id, ESTADO_BANNER='ERROR_EN_BANNER', DETALLE="Error actualizando GOREMAL" )    
         else:
             print("[9.4] ----------- actualizado usuario en Banner " )
-            oracle_egre.update_usuario_procesar(egresado.id, ESTADO_BANNER='ACTUAIZADO_EN_BANNER', DETALLE=respuesta[:300] ) 
-            resultado_banner_goremal = True
+            oracle_egre.update_usuario_procesar(egresado.id, ESTADO_BANNER='ACTUALIZADO_EN_BANNER', GOREMAL="OK", DETALLE="" ) 
         
     else:
         print("[9.4] ----------- Usuario creado/actualizado en Banner con exito " )
-        oracle_egre.update_usuario_procesar(egresado.id, ESTADO_BANNER='CREADO_EN_BANNER', BANNER="OK" )
-        resultado_banner_goremal = True
+        oracle_egre.update_usuario_procesar(egresado.id, ESTADO_BANNER='CREADO_EN_BANNER', GOREMAL="OK", DETALLE="" )
         
-        
-    print("-------------------INICIA CREACION GOBTEPAC-------------------------", resultado_banner_goremal )
-    if(resultado_banner_goremal):
-        
-        oracle_egre.actualiza_gobtpac(pidm=pidm_par,mail=login + '@uniandes.edu.co',autocommit=True)
-        
-        
-        
-        
-    return resultado_banner_goremal
         
     
+    if(respuesta_goremal):        
+        print("-------------------INICIA CREACION GOBTEPAC-------------------------" )
+        respuesta_gobtepac = oracle_egre.actualiza_gobtpac(pidm=pidm_par,mail=login ,autocommit=True)        
+        print("Resultado GOBTPAC: ", respuesta_gobtepac) 
+        
+        if respuesta_gobtepac == False:
+            print("[9.3] ----------- Error actualizando usuario en Banner " )
+            oracle_egre.update_usuario_procesar(egresado.id, ESTADO_BANNER='ERROR_EN_BANNER', DETALLE="Error actualizando GOBTEPAC" )    
+        else:
+            print("[9.4] ----------- actualizado usuario en Banner " )
+            oracle_egre.update_usuario_procesar(egresado.id, ESTADO_BANNER='ACTUALIZADO_EN_BANNER', GOBTPAC="OK", DETALLE="" ) 
+        
+    print("=== resultado_banner_goremal " , respuesta_goremal , " respuesta_gobtepac ", respuesta_gobtepac)
+        
+    return respuesta_goremal and respuesta_gobtepac
+        
+    
+    
+     
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#
+#       Funcion de creacion de usuarios en Banner
+# 
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #        
+
+def proceso_CRM(egresado, pidm_par, login):
+    pass
     
      
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -365,8 +379,9 @@ def proceso_banner(egresado, pidm_par, login):
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #        
 
 def enviar_correo_notificacion(egresado, login, password):
-   pass 
     
+    enviar_correo_graph("cuenta@uniandes.edu.co", "napardoz@gmail.com", "Correo prueba", "Correo recibido!")
+    # exit(0)
 
 
 
