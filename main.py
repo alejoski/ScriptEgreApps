@@ -3,10 +3,11 @@ from math import e
 from dotenv import load_dotenv
 import logging
 from login_options_generator import LoginOptionsGenerator
+from modules.crm_salesforce import crear_multipurpose
 from modules.oracle import OracleConnector
 from modules.ad import ActiveDirectoryConnector
 from modules.api import APIClient
-from send_mail import enviar_correo_graph
+from modules.send_mail import enviar_correo_graph
 import codecs
 import os
 class Container:#Borrrar
@@ -54,9 +55,6 @@ def close_conections():
         oracle_vb.close()
 
 
-def create_user_in_ad(attributes):
-    global ad
-    ad.create_user(attributes)
 
 def normalizar_datos_egre(egresado):
 
@@ -75,6 +73,15 @@ def normalizar_datos_egre(egresado):
 
     return egresado
 
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#
+#     Funcion principal, desde aqui se inicia el proceso  
+#
+#     
+#     MAIN()
+#     
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 
 def main():
@@ -369,8 +376,7 @@ def proceso_banner(egresado, pidm_par, login):
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #        
 
 def proceso_CRM(egresado, pidm_par, login):
-    pass
-    
+    crear_multipurpose("1001342560")    
      
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #
